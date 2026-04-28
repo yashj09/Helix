@@ -1,0 +1,11 @@
+# Foundry
+out/
+cache/
+broadcast/
+
+# forge install --no-git dependency copies (reproducible via `forge install`)
+lib/
+
+# Local env / secrets
+.env
+.env.local
