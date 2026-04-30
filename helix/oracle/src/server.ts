@@ -28,6 +28,7 @@ const store: SoulStore = makeStore({
   indexerUrl:
     process.env.HELIX_INDEXER_URL ?? "https://indexer-storage-testnet-turbo.0g.ai",
   privateKey: process.env.STORAGE_PRIVATE_KEY ?? process.env.ORACLE_PRIVATE_KEY,
+  cachePath: process.env.HELIX_KEY_CACHE ?? "./helix-oracle-keys.enc",
 });
 
 // Verifier binding for on-chain proof verification. When both are set, the server produces
@@ -159,9 +160,19 @@ app.post("/prepareMerge", async (req: Request, res: Response) => {
     const recA = await store.get(body.parentA.dataHash);
     const recB = await store.get(body.parentB.dataHash);
     if (!recA || !recB) {
-      return res
-        .status(404)
-        .json({ error: "one or both parent souls not found in oracle store" });
+      const missing = [
+        !recA ? `parentA (dataHash=${body.parentA.dataHash}, tokenId=${body.parentA.tokenId})` : null,
+        !recB ? `parentB (dataHash=${body.parentB.dataHash}, tokenId=${body.parentB.tokenId})` : null,
+      ].filter(Boolean);
+      return res.status(404).json({
+        error: "soul key not in oracle cache",
+        missing,
+        hint:
+          "This oracle process has no decryption key for the missing soul(s). Symmetric keys " +
+          "are held in memory and are lost across oracle restarts. To merge, mint fresh parents " +
+          "in the current oracle session and use their dataHash from the new mint output. " +
+          "(In production, keys live in a TEE with stable identity across reboots.)",
+      });
     }
 
     // TEE boundary: decrypt, blend, re-encrypt.
