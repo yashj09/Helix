@@ -7,6 +7,7 @@ import "forge-std/console.sol";
 import {HelixSoul} from "../src/helix/HelixSoul.sol";
 import {HelixLineage} from "../src/helix/HelixLineage.sol";
 import {HelixVerifier} from "../src/helix/HelixVerifier.sol";
+import {HelixNames} from "../src/helix/HelixNames.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /// Deploy Helix: HelixVerifier → HelixSoul → HelixLineage, all behind ERC1967 proxies.
@@ -53,19 +54,26 @@ contract Deploy is Script {
         HelixLineage lineage = HelixLineage(address(new ERC1967Proxy(address(lineageImpl), lineageInit)));
         console.log("HelixLineage:", address(lineage));
 
-        // 4. Wire lineage into soul (deployer must be ADMIN)
+        // 4. Names (subname registrar)
+        HelixNames namesImpl = new HelixNames();
+        bytes memory namesInit = abi.encodeCall(HelixNames.initialize, (address(soul), admin));
+        HelixNames names = HelixNames(address(new ERC1967Proxy(address(namesImpl), namesInit)));
+        console.log("HelixNames:", address(names));
+
+        // 5. Wire lineage into soul (deployer must be ADMIN)
         soul.setLineage(address(lineage));
         console.log("HelixSoul.setLineage completed");
 
         vm.stopBroadcast();
 
-        // 5. Persist deployment addresses for CLI/oracle consumption
+        // 6. Persist deployment addresses for CLI/oracle consumption
         string memory json = string.concat(
             "{\n",
             '  "chainId": ', vm.toString(block.chainid), ",\n",
             '  "verifier": "', vm.toString(address(verifier)), '",\n',
             '  "soul": "', vm.toString(address(soul)), '",\n',
             '  "lineage": "', vm.toString(address(lineage)), '",\n',
+            '  "names": "', vm.toString(address(names)), '",\n',
             '  "oracle": "', vm.toString(oracle), '",\n',
             '  "treasury": "', vm.toString(treasury), '",\n',
             '  "admin": "', vm.toString(admin), '"\n',
