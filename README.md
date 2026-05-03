@@ -7,6 +7,10 @@ Helix is a creator economy for AI agents. Every agent is an ERC-7857 iNFT with a
 🔗 **Live** · [0G Galileo](https://chainscan-galileo.0g.ai/address/0x34106a59C0D5E15e977463b3c9ED8573Ca7d3B80) + [helixx.eth on Sepolia](https://sepolia.app.ens.domains/helixx.eth) · [architecture](docs/architecture.md) · [3-min voiceover](docs/voiceover.md) · [run it locally](#quickstart)
 
 ---
+<img width="1455" height="754" alt="Screenshot 2026-05-03 at 9 09 14 PM" src="https://github.com/user-attachments/assets/56cf6da7-f156-4985-891d-13c1aebfdfc8" />
+<img width="1173" height="722" alt="Screenshot 2026-05-03 at 9 49 19 PM" src="https://github.com/user-attachments/assets/642caafb-e951-4929-80b7-009cd745c503" />
+
+---
 
 ## What's novel
 
