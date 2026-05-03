@@ -107,7 +107,10 @@ export function IndexerSidebar() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto pr-1">
         {events.map((e, i) => (
           <div key={i} className="py-0.5 flex gap-2">
-            <span style={{ color: "var(--color-term-ink-dim)" }}>
+            <span
+              suppressHydrationWarning
+              style={{ color: "var(--color-term-ink-dim)" }}
+            >
               {new Date(e.t).toLocaleTimeString([], { hour12: false })}
             </span>
             {e.explorerUrl ? (
