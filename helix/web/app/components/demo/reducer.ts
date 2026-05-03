@@ -78,7 +78,34 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
           b: state.b,
           child: action.child,
           messages: state.messages,
+          childMessages: [],
+          sessionRemaining: null,
         };
+      return state;
+
+    case "child-chat-add":
+      if (state.step === "ready-to-invoke")
+        return { ...state, childMessages: [...state.childMessages, action.msg] };
+      return state;
+
+    case "session-started":
+      if (state.step === "ready-to-invoke")
+        return {
+          ...state,
+          a: action.updatedA,
+          b: action.updatedB,
+          child: action.updatedChild,
+          sessionRemaining: action.messageCount,
+          sessionRenter: action.renter,
+          sessionAuthTx: action.authTxHash,
+          sessionRentTx: action.rentTxHash,
+          sessionRoyalties: action.royalties,
+        };
+      return state;
+
+    case "session-message-consumed":
+      if (state.step === "ready-to-invoke" && state.sessionRemaining !== null)
+        return { ...state, sessionRemaining: Math.max(0, action.remaining) };
       return state;
 
     case "invoke-start":
@@ -89,6 +116,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
           b: state.b,
           child: state.child,
           messages: state.messages,
+          childMessages: state.childMessages,
         };
       return state;
 
@@ -100,6 +128,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
           b: action.updatedB,
           child: action.updatedChild,
           messages: state.messages,
+          childMessages: state.childMessages,
           royalties: action.royalties,
           invokeTx: action.txHash,
           invokeExplorer: action.explorer,
