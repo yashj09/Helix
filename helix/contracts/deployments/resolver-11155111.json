@@ -1,0 +1,7 @@
+{
+  "chainId": 11155111,
+  "resolver": "0xcaEbb073fc043e1c1489eBc617C4e973Df355EcF",
+  "signer": "0x33014845047C61CCF1672b7F6766C5Cc00999C09",
+  "gatewayUrl": "https://helix-demo.vercel.app/api/ens/gateway/{sender}/{data}.json",
+  "ensNode": "0xe5086b2a21ecb5f69835c90b33cc8c61057d938fd0b8abd8b48ce7c735537350"
+}
