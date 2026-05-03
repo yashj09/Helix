@@ -43,6 +43,23 @@ export const HelixSoulAbi = [
   },
   {
     type: "function",
+    name: "authorizeUsage",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "user", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "authorizedUsersOf",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address[]" }],
+  },
+  {
+    type: "function",
     name: "creatorOf",
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],

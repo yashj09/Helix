@@ -2,6 +2,10 @@
 
 import { motion } from "motion/react";
 import type { AgentCard as AgentCardT } from "./types";
+import { ProofPanel } from "./proof-panel";
+
+const EXPLORER_BASE =
+  process.env.NEXT_PUBLIC_EXPLORER_BASE ?? "https://chainscan-galileo.0g.ai";
 
 export function AgentCard({
   card,
@@ -35,7 +39,18 @@ export function AgentCard({
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--color-ink-mute)]">
             token #{card.tokenId}
           </div>
-          <h3 className="mt-1 font-display text-2xl">{card.label}.helix.eth</h3>
+          <h3 className="mt-1 font-display text-2xl">
+            {card.label}.helixx.eth
+          </h3>
+          <a
+            href={`https://sepolia.app.ens.domains/${card.label}.helixx.eth`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-0.5 inline-block font-mono text-[10px] text-[var(--color-ink-mute)] hover:text-[var(--color-accent)]"
+            title="Resolves via Sepolia ENS → CCIP-Read → 0G"
+          >
+            verify on ENS ↗
+          </a>
         </div>
         <EarningsBadge amount={card.earned} />
       </div>
@@ -58,6 +73,8 @@ export function AgentCard({
           </a>
         )}
       </div>
+
+      <ProofPanel tokenId={card.tokenId} explorerBase={EXPLORER_BASE} />
     </motion.div>
   );
 }
