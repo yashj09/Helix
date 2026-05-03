@@ -20,6 +20,22 @@ export interface OracleIdentity {
 
 export function loadOracleIdentity(): OracleIdentity {
   const fromEnv = process.env.ORACLE_PRIVATE_KEY as Hex | undefined;
+  if (!fromEnv) {
+    // Fail loudly in the common case. Silently generating a random key produces proofs
+    // that no HelixVerifier-on-chain will ever accept — every mint + merge reverts with
+    // HelixVerifierBadAccessSig. Only useful in isolated unit tests that also deploy a
+    // fresh verifier bound to the random key, which is set via HELIX_ALLOW_EPHEMERAL_ORACLE.
+    if (process.env.HELIX_ALLOW_EPHEMERAL_ORACLE !== "1") {
+      throw new Error(
+        "ORACLE_PRIVATE_KEY is not set. Source helix/contracts/.env before starting the oracle, " +
+          "or set HELIX_ALLOW_EPHEMERAL_ORACLE=1 if you really want a throwaway signer."
+      );
+    }
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[oracle] ORACLE_PRIVATE_KEY missing — generating ephemeral key. Proofs will NOT verify on mainnet verifiers."
+    );
+  }
   const pk: Hex = fromEnv ?? generatePrivateKey();
   const signer = privateKeyToAccount(pk);
 

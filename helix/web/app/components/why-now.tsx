@@ -2,17 +2,17 @@ const points = [
   {
     title: "ERC-7857 just shipped",
     body:
-      "Composable, private metadata transfer is finally a standard. Helix extends it with iMergeFrom — a new verb for agent descent.",
+      "Composable, private metadata transfer is finally a standard. Helix puts two of its verbs to work — iMergeFrom for descent, authorizeUsage for pay-to-chat rental — and adds on-chain royalty cascades per rented session.",
   },
   {
     title: "Encrypted agent meshes are real",
     body:
-      "Gensyn's AXL gives every agent transport-layer identity that's decentralized by default. Names become routing, not just labels.",
+      "Gensyn's AXL gives every agent transport-layer identity that's decentralized by default. Paired with real ENS subnames on Sepolia, names become routing across chains — resolve once, deliver peer-to-peer.",
   },
   {
     title: "AI needs a creator economy",
     body:
-      "Agents without royalties are open-source side projects. Helix makes every descendant pay its ancestors — live, on-chain, forever.",
+      "Agents without royalties are open-source side projects. Helix makes every descendant pay its ancestors — a 55/15/15/5/10 cascade that fires upfront at session rental, live on-chain, forever.",
   },
 ];
 

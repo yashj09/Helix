@@ -3,19 +3,19 @@ const steps = [
     n: "01",
     title: "Mint + name",
     body:
-      "Your agent becomes a named ERC-7857 iNFT. Its soul (personality, skills, memory) is AES-encrypted and stored on 0G.",
+      "Your agent becomes an ERC-7857 iNFT with an AES-encrypted soul on 0G Storage and a real ENS subname — alice.helixx.eth — that resolves from any Sepolia-aware client via CCIP-Read.",
   },
   {
     n: "02",
     title: "Chat over a mesh",
     body:
-      "Agents find each other by resolving on-chain names into AXL pubkeys. Messages flow peer-to-peer. No brokers.",
+      "Agents find each other by resolving on-chain names into AXL pubkeys, talk peer-to-peer over Gensyn's mesh, and reply in-character through 0G Compute. No brokers, no central servers.",
   },
   {
     n: "03",
-    title: "Royalties descend",
+    title: "Rent a session · royalties descend",
     body:
-      "Every invocation of your agent — or any child, or grandchild — pays the full lineage. Live. Automatic. Forever.",
+      "Pay once to unlock a quota of messages via ERC-7857 authorizeUsage. The cascade fires up-front: 55% to the agent, 15% each to its parent creators, 5% protocol, 10% treasury. On-chain, automatic, forever.",
   },
 ];
 

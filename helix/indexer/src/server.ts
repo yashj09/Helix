@@ -22,16 +22,21 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { IndexerEvent } from "./types.js";
+import * as registry from "./registry.js";
+import { createServer } from "node:http";
 
 // ─────────────────────────────────────────────────────────────────────────
 //  Config
 // ─────────────────────────────────────────────────────────────────────────
 
 const PORT = Number(process.env.PORT ?? 8788);
+const HTTP_PORT = Number(process.env.HTTP_PORT ?? 8789);
 const CHAIN_ID = Number(process.env.HELIX_CHAIN_ID ?? 16602);
 const RPC_URL = process.env.HELIX_RPC_URL ?? "https://evmrpc-testnet.0g.ai";
 const EXPLORER = process.env.HELIX_EXPLORER ?? "https://chainscan-galileo.0g.ai";
 const POLL_MS = Number(process.env.HELIX_POLL_MS ?? 2500);
+/** Number of blocks to backfill on boot — rebuilds the marketplace registry after restart. */
+const BACKFILL_BLOCKS = BigInt(process.env.HELIX_BACKFILL_BLOCKS ?? 200000);
 
 // Load deployment record.
 const here = dirname(fileURLToPath(import.meta.url));
@@ -191,6 +196,11 @@ function handleSoulLog(log: Log): void {
         const to = args.to as Hex;
         const tokenId = args.tokenId as bigint;
         if (from === "0x0000000000000000000000000000000000000000") {
+          registry.onMint({
+            tokenId: Number(tokenId),
+            to,
+            txHash: log.transactionHash! as Hex,
+          });
           emit({
             t: Date.now(),
             kind: "mint",
@@ -199,8 +209,15 @@ function handleSoulLog(log: Log): void {
             tokenId: Number(tokenId),
             explorerUrl: txUrl(log.transactionHash!),
           });
+        } else {
+          registry.onTransfer({ tokenId: Number(tokenId), to });
         }
       } else if (name === "Merged") {
+        registry.onMerged({
+          childTokenId: Number(args._childTokenId),
+          parentA: Number(args._parentA),
+          parentB: Number(args._parentB),
+        });
         emit({
           t: Date.now(),
           kind: "merge",
@@ -252,10 +269,14 @@ function handleNamesLog(log: Log): void {
       });
       const args = decoded.args as unknown as Record<string, unknown>;
       if (name === "NameRegistered") {
+        registry.onNameRegistered({
+          tokenId: Number(args.tokenId),
+          label: args.label as string,
+        });
         emit({
           t: Date.now(),
           kind: "name",
-          line: `Registered ${args.label}.helix.eth → #${args.tokenId}`,
+          line: `Registered ${args.label}.helixx.eth → #${args.tokenId}`,
           txHash: log.transactionHash!,
           tokenId: Number(args.tokenId),
           explorerUrl: txUrl(log.transactionHash!),
@@ -263,6 +284,11 @@ function handleNamesLog(log: Log): void {
       } else if (name === "TextChanged") {
         const key = args.key as string;
         const value = (args.value as string) ?? "";
+        registry.onTextChanged({
+          tokenId: Number(args.tokenId),
+          key,
+          value,
+        });
         const short = value.length > 24 ? value.slice(0, 12) + "…" + value.slice(-10) : value;
         emit({
           t: Date.now(),
@@ -299,6 +325,10 @@ function handleLineageLog(log: Log): void {
           explorerUrl: txUrl(log.transactionHash!),
         });
       } else if (name === "RoyaltyFlowed") {
+        registry.onRoyaltyFlowed({
+          toToken: Number(args.toToken),
+          amount: args.amount as bigint,
+        });
         emit({
           t: Date.now(),
           kind: "royalty",
@@ -364,8 +394,10 @@ async function tick(): Promise<void> {
   try {
     const latest = await client.getBlockNumber();
     if (state.block === 0n) {
-      // First tick — start from a small window back so we have something to show.
-      state.block = latest > 5n ? latest - 5n : 0n;
+      // First tick — backfill HELIX_BACKFILL_BLOCKS worth so the marketplace registry has
+      // history after an indexer restart. The WebSocket backlog still only replays the last
+      // MAX_BACKLOG sidebar events, but the registry map is fully populated.
+      state.block = latest > BACKFILL_BLOCKS ? latest - BACKFILL_BLOCKS : 0n;
     }
     if (latest <= state.block) return;
 
@@ -411,6 +443,44 @@ async function tick(): Promise<void> {
 
 setInterval(tick, POLL_MS);
 void tick();
+
+// ─────────────────────────────────────────────────────────────────────────
+//  HTTP server — GET /agents returns the marketplace registry snapshot.
+//  Runs on HTTP_PORT (default 8789), separate from the WebSocket on PORT.
+// ─────────────────────────────────────────────────────────────────────────
+
+const httpServer = createServer((req, res) => {
+  // Permissive CORS — the indexer only exposes read-only snapshots of on-chain data, and
+  // the marketplace page needs same-origin-ish access during local dev.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204).end();
+    return;
+  }
+  if (req.method === "GET" && req.url === "/agents") {
+    const body = JSON.stringify({
+      agents: registry.snapshot(),
+      count: registry.registrySize(),
+      asOf: Date.now(),
+    });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && (req.url === "/health" || req.url === "/")) {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, agents: registry.registrySize() }));
+    return;
+  }
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "not found" }));
+});
+
+httpServer.listen(HTTP_PORT, () => {
+  // eslint-disable-next-line no-console
+  console.log(`[helix-indexer] http://0.0.0.0:${HTTP_PORT}  endpoints: /agents /health`);
+});
 
 // eslint-disable-next-line no-console
 console.log(

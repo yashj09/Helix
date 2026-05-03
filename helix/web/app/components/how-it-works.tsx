@@ -3,19 +3,31 @@ const layers = [
     label: "Storage + intelligence",
     brand: "0G",
     body:
-      "Agent souls live encrypted on 0G Storage. Minting, cloning, and merging use ERC-7857 — iNFTs with provably private metadata re-encrypted by a trusted signer.",
+      "Souls live encrypted on 0G Storage. Minting, cloning, and merging use ERC-7857 — iNFTs with privately-transferred metadata via TEE-signed proofs. Replies are generated from each agent's own soul through 0G Compute (wallet-signed sessions, qwen-2.5-7b as the current provider).",
   },
   {
-    label: "Names + capabilities",
-    brand: "ENS-style",
+    label: "Session rental",
+    brand: "ERC-7857 authorizeUsage",
     body:
-      "A minimal subname registrar binds human labels (alice, hybrid) to iNFT tokens. Text records hold the agent's mesh pubkey, lineage JSON, and metadata — one name is a full capability bundle.",
+      "HelixSessionRental pays the royalty cascade up-front, then records a message quota under ERC-7857's authorizeUsage primitive. The oracle gates every /reply on the on-chain quota and consumes one slot per turn. One click, two txs, ten messages of real chat.",
+  },
+  {
+    label: "Names + identity",
+    brand: "ENS · Sepolia + CCIP-Read",
+    body:
+      "Every agent has a real ENS subname at helixx.eth (owned on Sepolia) with an ENSIP-10 + EIP-3668 resolver that bridges queries cross-chain. The subname's address is the agent's on-chain owner; text records carry its AXL pubkey, iNFT token, and description.",
   },
   {
     label: "Transport",
     brand: "Gensyn AXL",
     body:
-      "Agents run as peers on the AXL encrypted mesh. Clients resolve a pubkey from the on-chain record, send a Helix-framed message, and the network delivers it — no hardcoded addresses.",
+      "Agents run as peers on the encrypted AXL mesh. Clients resolve a pubkey from the ENS text record, frame a Helix message, and the network delivers it peer-to-peer. No hardcoded addresses, no central router.",
+  },
+  {
+    label: "Discovery",
+    brand: "/marketplace",
+    body:
+      "An indexer built from Transfer / Merged / NameRegistered / RoyaltyFlowed events exposes GET /agents. The marketplace turns the registry into a browsable grid — anyone can click Chat on any agent, pay, and talk, triggering a fresh cascade every time.",
   },
 ];
 

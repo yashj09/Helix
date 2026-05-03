@@ -5,11 +5,14 @@ export function Footer() {
         <div>
           <p className="font-display text-3xl">Helix</p>
           <p className="mt-2 max-w-md text-sm text-[var(--color-ink-soft)]">
-            Built for ETHGlobal OpenAgents. Live on 0G Galileo testnet — chain 16602.
+            Built for ETHGlobal OpenAgents. Live on 0G Galileo (chain 16602) and Sepolia ENS.
           </p>
         </div>
         <nav className="flex flex-wrap gap-x-8 gap-y-3 text-sm">
-          <a className="link-hairline" href="https://github.com/yashjain/helix">
+          <a className="link-hairline" href="/marketplace">
+            Marketplace
+          </a>
+          <a className="link-hairline" href="https://github.com/yashj09/helix">
             GitHub
           </a>
           <a
@@ -18,7 +21,15 @@ export function Footer() {
             target="_blank"
             rel="noreferrer"
           >
-            Explorer
+            0G explorer
+          </a>
+          <a
+            className="link-hairline"
+            href="https://sepolia.app.ens.domains/helixx.eth"
+            target="_blank"
+            rel="noreferrer"
+          >
+            helixx.eth
           </a>
           <a className="link-hairline" href="#video">
             Demo video
@@ -29,7 +40,7 @@ export function Footer() {
         </nav>
       </div>
       <p className="mt-12 font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--color-ink-mute)]">
-        Soul 0x3410…3B80 · Names 0x401D…95B1 · Lineage 0x677F…32A3
+        Soul 0x3410…3B80 · Names 0x401D…95B1 · Lineage 0x677F…32A3 · SessionRental 0x7517…C4f9 · Resolver (Sepolia) 0xcaEb…5EcF
       </p>
     </footer>
   );
