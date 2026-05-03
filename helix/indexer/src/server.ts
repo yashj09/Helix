@@ -44,6 +44,8 @@ const deployment = JSON.parse(readFileSync(depPath, "utf8")) as {
   soul: Hex;
   lineage: Hex;
   names: Hex;
+  /** v3: optional — older deployments don't have this. */
+  sessionRental?: Hex;
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -59,6 +61,11 @@ const soulEvents = {
   ),
   Cloned: parseAbiItem(
     "event Cloned(uint256 indexed _tokenId, uint256 indexed _newTokenId, address _from, address _to)"
+  ),
+  // Canonical ERC-7857 proof event: receiver's sealed key is published on-chain so only they
+  // can decrypt the soul. Labeling it with 🔒 makes the spec trail obvious in the sidebar.
+  PublishedSealedKey: parseAbiItem(
+    "event PublishedSealedKey(address indexed _to, uint256 indexed _tokenId, bytes[] _sealedKeys)"
   ),
 };
 
@@ -77,6 +84,16 @@ const lineageEvents = {
   ),
   RoyaltyFlowed: parseAbiItem(
     "event RoyaltyFlowed(uint256 indexed fromToken, uint256 indexed toToken, address indexed toAddress, uint256 amount)"
+  ),
+};
+
+// v3: HelixSessionRental events — the pay-to-chat primitive built on ERC-7857 authorizeUsage.
+const rentalEvents = {
+  SessionRented: parseAbiItem(
+    "event SessionRented(uint256 indexed tokenId, address indexed renter, uint256 messageCount, uint256 amountPaid)"
+  ),
+  SessionConsumed: parseAbiItem(
+    "event SessionConsumed(uint256 indexed tokenId, address indexed renter, uint256 remaining)"
   ),
 };
 
@@ -200,6 +217,23 @@ function handleSoulLog(log: Log): void {
           txHash: log.transactionHash!,
           explorerUrl: txUrl(log.transactionHash!),
         });
+      } else if (name === "PublishedSealedKey") {
+        const to = args._to as Hex;
+        const tokenId = args._tokenId as bigint;
+        const sealedKeys = (args._sealedKeys as string[]) ?? [];
+        // sealedKeys[0] is typically a hex-prefixed binary. Report total byte length.
+        const totalBytes = sealedKeys.reduce((n, k) => {
+          const clean = k.startsWith("0x") ? k.slice(2) : k;
+          return n + Math.floor(clean.length / 2);
+        }, 0);
+        emit({
+          t: Date.now(),
+          kind: "sealed",
+          line: `🔒 PublishedSealedKey to ${fmtAddr(to)} for token #${tokenId} · ${totalBytes} bytes`,
+          txHash: log.transactionHash!,
+          tokenId: Number(tokenId),
+          explorerUrl: txUrl(log.transactionHash!),
+        });
       }
       return;
     } catch {
@@ -282,6 +316,43 @@ function handleLineageLog(log: Log): void {
   }
 }
 
+function handleRentalLog(log: Log): void {
+  for (const [name, abi] of Object.entries(rentalEvents)) {
+    try {
+      const decoded = decodeEventLog({
+        abi: [abi],
+        data: log.data,
+        topics: log.topics,
+      });
+      const args = decoded.args as unknown as Record<string, unknown>;
+      if (name === "SessionRented") {
+        emit({
+          t: Date.now(),
+          kind: "session-rented",
+          line: `🎫 SessionRented #${args.tokenId} · renter ${fmtAddr(
+            args.renter as string
+          )} · ${args.messageCount} msgs · ${fmtAmount(args.amountPaid as bigint)}`,
+          txHash: log.transactionHash!,
+          tokenId: Number(args.tokenId),
+          explorerUrl: txUrl(log.transactionHash!),
+        });
+      } else if (name === "SessionConsumed") {
+        emit({
+          t: Date.now(),
+          kind: "session-consumed",
+          line: `▶ SessionConsumed #${args.tokenId} · ${args.remaining} msgs remaining`,
+          txHash: log.transactionHash!,
+          tokenId: Number(args.tokenId),
+          explorerUrl: txUrl(log.transactionHash!),
+        });
+      }
+      return;
+    } catch {
+      // next
+    }
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 //  Polling loop — get latest block, fetch logs since last checkpoint
 // ─────────────────────────────────────────────────────────────────────────
@@ -301,7 +372,7 @@ async function tick(): Promise<void> {
     const fromBlock = state.block + 1n;
     const toBlock = latest;
 
-    const [soulLogs, namesLogs, lineageLogs] = await Promise.all([
+    const [soulLogs, namesLogs, lineageLogs, rentalLogs] = await Promise.all([
       client.getLogs({
         address: deployment.soul,
         fromBlock,
@@ -317,11 +388,19 @@ async function tick(): Promise<void> {
         fromBlock,
         toBlock,
       }),
+      deployment.sessionRental
+        ? client.getLogs({
+            address: deployment.sessionRental,
+            fromBlock,
+            toBlock,
+          })
+        : Promise.resolve([] as Log[]),
     ]);
 
     soulLogs.forEach(handleSoulLog);
     namesLogs.forEach(handleNamesLog);
     lineageLogs.forEach(handleLineageLog);
+    rentalLogs.forEach(handleRentalLog);
 
     state.block = toBlock;
   } catch (err) {
@@ -338,5 +417,6 @@ console.log(
   `[helix-indexer] ws://0.0.0.0:${PORT}  chain=${CHAIN_ID}  rpc=${RPC_URL}  poll=${POLL_MS}ms`
 );
 console.log(
-  `[helix-indexer]   watching soul=${deployment.soul} names=${deployment.names} lineage=${deployment.lineage}`
+  `[helix-indexer]   watching soul=${deployment.soul} names=${deployment.names} lineage=${deployment.lineage}` +
+    (deployment.sessionRental ? ` rental=${deployment.sessionRental}` : "")
 );

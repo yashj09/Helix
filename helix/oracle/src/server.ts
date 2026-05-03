@@ -16,6 +16,8 @@ import { encryptSoul, decryptSoul, sealKeyFor } from "./encryption.js";
 import { makeRootSoul, mergeSouls, type Soul } from "./soul.js";
 import { buildProof, buildSignedProof } from "./proofs.js";
 import { makeStore, type SoulStore } from "./storage.js";
+import { replyFor, computeMode, type ChatTurn } from "./compute.js";
+import { maybeMakeRentalFromEnv } from "./rental.js";
 import type { Hex, TransferValidityProof, IntelligentData } from "./types.js";
 
 const oracle = loadOracleIdentity();
@@ -37,6 +39,11 @@ const store: SoulStore = makeStore({
 const VERIFIER_ADDRESS = process.env.HELIX_VERIFIER as Hex | undefined;
 const CHAIN_ID = process.env.HELIX_CHAIN_ID ? BigInt(process.env.HELIX_CHAIN_ID) : undefined;
 const useSignedProofs = Boolean(VERIFIER_ADDRESS && CHAIN_ID);
+
+// Optional: session-rental gate for /reply. If HELIX_SESSION_RENTAL is set, /reply requires
+// the caller to pass { tokenId, renter } and have an active session. Otherwise replies run
+// unrestricted (open mode for local dev).
+const rentalClient = maybeMakeRentalFromEnv();
 
 async function makeProof(params: {
   dataHash: Hex;
@@ -247,6 +254,168 @@ app.post("/prepareMerge", async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+//  POST /reply — generate an agent's reply to a conversation
+//  Body: { dataHash, history: [{role, content}, ...], maxTokens? }
+//  Returns: { text, fallback, model, agent: { name, skills } }
+//
+//  Loads the soul from the persistent cache (via dataHash), decrypts it, builds a system
+//  prompt from its personality, and calls 0G Compute (if OG_COMPUTE_KEY is set) or the
+//  scripted fallback otherwise. Demo-ready without real compute credentials.
+// ─────────────────────────────────────────────────────────────────────────
+
+app.post("/reply", async (req: Request, res: Response) => {
+  try {
+    const body = req.body as {
+      dataHash?: Hex;
+      history?: ChatTurn[];
+      maxTokens?: number;
+      // Optional: session gate. Required when HELIX_SESSION_RENTAL is configured AND the
+      // caller asks for gated=true. When omitted, caller gets "open mode" replies.
+      tokenId?: number;
+      renter?: Hex;
+      gated?: boolean;
+    };
+    if (!body.dataHash || !Array.isArray(body.history)) {
+      return res.status(400).json({ error: "dataHash + history[] required" });
+    }
+
+    // Session gate: if caller opts in (gated=true) AND rental is configured, check quota.
+    // When gated=true but rental is unconfigured on the server, fail closed — the caller
+    // explicitly asked for enforcement and we can't honor it.
+    const shouldGate = body.gated === true;
+    let remainingAfter: number | null = null;
+    if (shouldGate) {
+      if (!rentalClient) {
+        return res.status(503).json({
+          error: "session gating requested but HELIX_SESSION_RENTAL is not configured",
+        });
+      }
+      if (typeof body.tokenId !== "number" || !body.renter) {
+        return res.status(400).json({ error: "gated=true requires tokenId + renter" });
+      }
+      const remaining = await rentalClient.activeSessionOf(BigInt(body.tokenId), body.renter);
+      if (remaining === 0n) {
+        return res.status(402).json({
+          error: "no active session",
+          hint: "call POST /api/session/start on the web layer to rent messages first",
+          tokenId: body.tokenId,
+          renter: body.renter,
+        });
+      }
+      remainingAfter = Number(remaining) - 1; // what it'll be after consume succeeds
+    }
+
+    const rec = await store.get(body.dataHash);
+    if (!rec) {
+      return res.status(404).json({
+        error: "soul key not in oracle cache",
+        hint:
+          "The oracle has no decryption key for this dataHash — mint in the same oracle " +
+          "session (or after loading from persistent cache) before calling /reply.",
+      });
+    }
+
+    const soul = decryptSoul(rec.ciphertext, rec.symmetricKey) as Soul;
+
+    // Consume BEFORE generating so a generation failure doesn't waste a message slot.
+    // (Trade-off: a consume tx that reverts after generation would leave the user confused;
+    // this way the gate is atomic from the user's perspective — either quota decrements, or
+    // nothing happens.)
+    let consumeTxHash: Hex | null = null;
+    if (shouldGate && rentalClient && typeof body.tokenId === "number" && body.renter) {
+      try {
+        consumeTxHash = await rentalClient.consumeMessage(BigInt(body.tokenId), body.renter);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[reply] consumeMessage failed, continuing open: " + String((err as Error).message));
+        remainingAfter = null; // we don't actually know remaining if consume failed
+      }
+    }
+
+    const reply = await replyFor({
+      soul,
+      history: body.history,
+      maxTokens: body.maxTokens,
+    });
+
+    res.json({
+      text: reply.text,
+      fallback: reply.fallback,
+      model: reply.model,
+      agent: { name: soul.name, skills: soul.skills.map((s) => s.name) },
+      session: shouldGate
+        ? { remainingAfter, consumeTxHash }
+        : undefined,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error).message) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+//  GET /soul/:dataHash/proof
+//    Returns a sanitized "proof" object the web UI can render in its View-proof panel.
+//    Contains: rootHash (0G Storage), ciphertext byte length, dataHash (echo).
+//    Does NOT expose the symmetric key.
+//
+//  GET /soul/:dataHash/ciphertext
+//    Streams the raw encrypted ciphertext for download. Opening the file shows gibberish.
+//
+//  POST /soul/:dataHash/reveal
+//    Decrypts the soul and returns JSON. Intended for the demo owner reveal flow.
+//    In hosted-relayer mode the relayer owns the iNFT, so this is "owner-only" by design.
+// ─────────────────────────────────────────────────────────────────────────
+
+app.get("/soul/:dataHash/proof", async (req: Request, res: Response) => {
+  try {
+    const dataHash = req.params.dataHash as Hex;
+    const rec = await store.get(dataHash);
+    if (!rec) return res.status(404).json({ error: "soul not in cache" });
+    res.json({
+      dataHash,
+      rootHash: rec.rootHash ?? null,
+      ciphertextBytes: rec.ciphertext?.length ?? 0,
+      storage: store.backend(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error).message) });
+  }
+});
+
+app.get("/soul/:dataHash/ciphertext", async (req: Request, res: Response) => {
+  try {
+    const dataHash = req.params.dataHash as Hex;
+    const rec = await store.get(dataHash);
+    if (!rec) return res.status(404).json({ error: "soul not in cache" });
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="soul-${dataHash.slice(0, 10)}.enc"`
+    );
+    res.send(Buffer.from(rec.ciphertext));
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error).message) });
+  }
+});
+
+app.post("/soul/:dataHash/reveal", async (req: Request, res: Response) => {
+  try {
+    const dataHash = req.params.dataHash as Hex;
+    const rec = await store.get(dataHash);
+    if (!rec) return res.status(404).json({ error: "soul not in cache" });
+    const plaintext = decryptSoul(rec.ciphertext, rec.symmetricKey);
+    res.json({
+      dataHash,
+      rootHash: rec.rootHash ?? null,
+      ciphertextBytes: rec.ciphertext?.length ?? 0,
+      soul: plaintext,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error).message) });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 //  POST /testSoulRoundtrip — dev helper, mint + immediately decrypt to confirm soul integrity.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -273,9 +442,10 @@ app.listen(PORT, () => {
     ? `SIGNED (verifier=${VERIFIER_ADDRESS}, chainId=${CHAIN_ID})`
     : "UNSIGNED (mock mode)";
   // eslint-disable-next-line no-console
+  const rentalMode = rentalClient ? `rental=${rentalClient.address}` : "rental=disabled";
   console.log(
     `[helix-oracle] listening on :${PORT}  signer=${oracle.signer.address}  ` +
-      `storage=${store.backend()}  proofs=${proofMode}`
+      `storage=${store.backend()}  proofs=${proofMode}  compute=${computeMode()}  ${rentalMode}`
   );
 });
 
